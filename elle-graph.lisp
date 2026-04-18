@@ -1,3 +1,4 @@
+(elle/epoch 8)
 #!/usr/bin/env elle
 ## elle-graph.lisp — extract RDF triples from Elle source files
 ##
@@ -47,10 +48,10 @@
 
 (defn lit [s]
   "Escape a string for ntriples literal."
-  (let [[escaped (-> s
+  (let [escaped (-> s
                    (string/replace "\\" "\\\\")
                    (string/replace "\"" "\\\"")
-                   (string/replace "\n" "\\n"))]]
+                   (string/replace "\n" "\\n"))]
     (string/format "\"{}\"" escaped)))
 
 (defn triple [s p o]
@@ -66,11 +67,11 @@
 (defn process-def [form file]
   "Process (def name value) or (def name). Skip destructuring patterns."
   (when (>= (length form) 2)
-    (let [[name-form (get (drop 1 form) 0)]]
+    (let [name-form (get (drop 1 form) 0)]
       # Only emit for simple symbol bindings, not destructuring
       (when (symbol? name-form)
-        (let* [[name (string name-form)]
-               [subj (elle-iri "def" name)]]
+        (let* [name (string name-form)
+               subj (elle-iri "def" name)]
           (triple subj (iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") (iri (string/format "{}:Def" ns)))
           (triple subj (iri (string/format "{}:name" ns)) (lit name))
           (triple subj (iri (string/format "{}:file" ns)) (lit file)))))))
@@ -78,15 +79,15 @@
 (defn process-defn [form file]
   "Process (defn name [params] docstring? body...)."
   (when (>= (length form) 3)
-    (let* [[parts (drop 1 form)]
-           [name (string (first parts))]
-           [params-form (get parts 1)]
-           [subj (elle-iri "fn" name)]
-           [param-names (map (fn [p] (string p))
+    (let* [parts (drop 1 form)
+           name (string (first parts))
+           params-form (get parts 1)
+           subj (elle-iri "fn" name)
+           param-names (map (fn [p] (string p))
                              (if (array? params-form)
                                (filter (fn [p] (not (= (string p) "&")))
                                        params-form)
-                               ()))]]
+                               ()))]
       (triple subj (iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") (iri (string/format "{}:Fn" ns)))
       (triple subj (iri (string/format "{}:name" ns)) (lit name))
       (triple subj (iri (string/format "{}:file" ns)) (lit file))
@@ -96,16 +97,16 @@
 
       # Check for docstring (string as 3rd element, before body)
       (when (>= (length parts) 4)
-        (let [[maybe-doc (get parts 2)]]
+        (let [maybe-doc (get parts 2)]
           (when (string? maybe-doc)
             (triple subj (iri (string/format "{}:doc" ns)) (lit maybe-doc))))))))
 
 (defn process-defmacro [form file]
   "Process (defmacro name (params) body...)."
   (when (>= (length form) 3)
-    (let* [[parts (drop 1 form)]
-           [name (string (first parts))]
-           [subj (elle-iri "macro" name)]]
+    (let* [parts (drop 1 form)
+           name (string (first parts))
+           subj (elle-iri "macro" name)]
       (triple subj (iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") (iri (string/format "{}:Macro" ns)))
       (triple subj (iri (string/format "{}:name" ns)) (lit name))
       (triple subj (iri (string/format "{}:file" ns)) (lit file)))))
@@ -113,11 +114,11 @@
 (defn process-import [form file]
   "Process (def name (import path)) — detect plugin imports."
   (when (>= (length form) 3)
-    (let* [[name (string (get (drop 1 form) 0))]
-           [val-form (get (drop 1 form) 1)]]
+    (let* [name (string (get (drop 1 form) 0))
+           val-form (get (drop 1 form) 1)]
       (when (and (pair? val-form) (= (string (first val-form)) "import"))
-        (let* [[path (string (get (drop 1 val-form) 0))]
-               [subj (elle-iri "import" name)]]
+        (let* [path (string (get (drop 1 val-form) 0))
+               subj (elle-iri "import" name)]
           (triple subj (iri "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") (iri (string/format "{}:Import" ns)))
           (triple subj (iri (string/format "{}:name" ns)) (lit name))
           (triple subj (iri (string/format "{}:path" ns)) (lit path))
@@ -126,13 +127,13 @@
 # ── Main ─────────────────────────────────────────────────────────────
 
 (each file in files
-  (let [[[ok? src] (protect (file/read file))]]
+  (let [[ok? src] (protect (file/read file))]
     (when ok?
-      (let [[[ok? forms] (protect (read-all src))]]
+      (let [[ok? forms] (protect (read-all src))]
         (when ok?
           (each form in forms
             (when (pair? form)
-              (let [[head (string (first form))]]
+              (let [head (string (first form))]
                 (case head
                   "defn"     (process-defn form file)
                   "defmacro" (process-defmacro form file)

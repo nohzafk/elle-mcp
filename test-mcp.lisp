@@ -1,3 +1,4 @@
+(elle/epoch 8)
 #!/usr/bin/env elle
 ## test-mcp.lisp — integration test for tools/mcp-server.lisp
 ##
@@ -42,12 +43,12 @@
 
 (defn rm-rf [path]
   "Recursively delete a path via /bin/rm -rf. No-op if it fails."
-  (let [[[ok? _] (protect (subprocess/system "rm" ["-rf" path]))]]
+  (let [[ok? _] (protect (subprocess/system "rm" ["-rf" path]))]
     nil))
 
 ## ── JSON-RPC I/O helpers ────────────────────────────────────────────────
 
-(var notification-buffer @[])
+(def @notification-buffer @[])
 
 (defn send [pin msg]
   "Send a single JSON-RPC message to the server."
@@ -58,12 +59,12 @@
 (defn recv-response [pout want-id]
   "Read JSON-RPC messages until one with id=want-id arrives.
    Notifications (messages without an id) are saved in the buffer."
-  (var result nil)
+  (def @result nil)
   (while (nil? result)
-    (let [[line (port/read-line pout)]]
+    (let [line (port/read-line pout)]
       (when (nil? line)
         (error {:error :eof :message "server closed stdout"}))
-      (let [[msg (json/parse line)]]
+      (let [msg (json/parse line)]
         (if (and (not (nil? (get msg "id"))) (= (get msg "id") want-id))
           (assign result msg)
           (when (not (nil? (get msg "method")))
@@ -73,8 +74,8 @@
 (defn recv-notification [pout want-method]
   "Wait for a notification with the given method. Checks buffer first,
    then reads from the port until found."
-  (var found nil)
-  (var keep @[])
+  (def @found nil)
+  (def @keep @[])
   (each msg in notification-buffer
     (if (and (nil? found) (= (get msg "method") want-method))
       (assign found msg)
@@ -84,10 +85,10 @@
     found
     (begin
       (while (nil? found)
-        (let [[line (port/read-line pout)]]
+        (let [line (port/read-line pout)]
           (when (nil? line)
             (error {:error :eof :message "server closed stdout"}))
-          (let [[msg (json/parse line)]]
+          (let [msg (json/parse line)]
             (if (= (get msg "method") want-method)
               (assign found msg)
               (push notification-buffer msg)))))
@@ -119,13 +120,13 @@
 (defer (begin (subprocess/kill proc) (rm-rf test-store))
 
   ## ── 1. initialize (must respond within 10s — not blocked by population)
-  (let [[[ok? r] (protect
+  (let [[ok? r] (protect
       (ev/timeout 10 (fn []
         (send pin {:jsonrpc "2.0" :id 1 :method "initialize"
                    :params {:protocolVersion "2025-03-26"
                             :capabilities {}
                             :clientInfo {:name "test-mcp" :version "0.1"}}})
-        (recv-response pout 1))))]]
+        (recv-response pout 1))))]
     (test "initialize: responds within 10 seconds" ok?
       "server took too long — population is blocking startup")
     (when ok?
@@ -140,31 +141,31 @@
 
   ## ── 2. tools/list ─────────────────────────────────────────────────────
   (send pin {:jsonrpc "2.0" :id 2 :method "tools/list" :params {}})
-  (let [[r (recv-response pout 2)]]
-    (let [[tools (get (get r "result") "tools")]]
+  (let [r (recv-response pout 2)]
+    (let [tools (get (get r "result") "tools")]
       (test "tools/list: exposes 21 tools"
         (= (length tools) 21)
         (string "expected 21, got " (length tools)))))
 
   ## ── 3. ping ───────────────────────────────────────────────────────────
   (send pin {:jsonrpc "2.0" :id 3 :method "ping" :params {}})
-  (let [[r (recv-response pout 3)]]
+  (let [r (recv-response pout 3)]
     (test "ping: has result"
       (not (nil? (get r "result"))) "missing result"))
 
   ## ── 4. drive population to completion ───────────────────────────────────
   ## The server populates the graph one file per request. Send pings to
   ## drive the populator forward until the notification arrives.
-  (var ping-id 100)
-  (var populated false)
+  (def @ping-id 100)
+  (def @populated false)
   (while (not populated)
     (send pin {:jsonrpc "2.0" :id ping-id :method "ping" :params {}})
-    (var result nil)
+    (def @result nil)
     (while (nil? result)
-      (let [[line (port/read-line pout)]]
+      (let [line (port/read-line pout)]
         (when (nil? line)
           (error {:error :eof :message "server closed stdout"}))
-        (let [[msg (json/parse line)]]
+        (let [msg (json/parse line)]
           (if (= (get msg "method") "notifications/model/populated")
             (begin
               (assign populated true)
@@ -176,11 +177,11 @@
   (test "population: completed" populated "population notification never arrived")
 
   ## ── 5. startup populated Elle primitives ──────────────────────────────
-  (let [[r (call-tool pin pout 5 "sparql_query"
+  (let [r (call-tool pin pout 5 "sparql_query"
              {:query (string "SELECT (COUNT(?p) AS ?n) WHERE { "
                              "?p <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-                             "<urn:elle:Primitive> }")})]]
-    (let [[text (tool-text r)]]
+                             "<urn:elle:Primitive> }")})]
+    (let [text (tool-text r)]
       (test "startup: elle primitives are queryable"
         (and (not (nil? text))
              (not (string/contains? text "No results"))
@@ -188,11 +189,11 @@
         (string "got: " text))))
 
   ## ── 6. startup populated Rust fn triples ──────────────────────────────
-  (let [[r (call-tool pin pout 6 "sparql_query"
+  (let [r (call-tool pin pout 6 "sparql_query"
              {:query (string "SELECT (COUNT(?f) AS ?n) WHERE { "
                              "?f <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-                             "<urn:rust:Fn> }")})]]
-    (let [[text (tool-text r)]]
+                             "<urn:rust:Fn> }")})]
+    (let [text (tool-text r)]
       (test "startup: rust functions are queryable"
         (and (not (nil? text))
              (not (string/contains? text "No results"))
@@ -200,45 +201,45 @@
         (string "got: " text))))
 
   ## ── 7. populate: load_rdf with user-owned test triples ────────────────
-  (let [[r (call-tool pin pout 7 "load_rdf"
+  (let [r (call-tool pin pout 7 "load_rdf"
              {:data (string "<http://test/alice> <http://test/name> \"Alice\" .\n"
                             "<http://test/bob> <http://test/name> \"Bob\" .\n")
-              :format "ntriples"})]]
+              :format "ntriples"})]
     (test "populate: load_rdf succeeded"
       (string/contains? (tool-text r) "successfully")
       (tool-text r)))
 
   ## ── 8. query: the just-loaded data is visible ────────────────────────
-  (let [[r (call-tool pin pout 8 "sparql_query"
-             {:query "SELECT ?name WHERE { ?p <http://test/name> ?name } ORDER BY ?name"})]]
-    (let [[text (tool-text r)]]
+  (let [r (call-tool pin pout 8 "sparql_query"
+             {:query "SELECT ?name WHERE { ?p <http://test/name> ?name } ORDER BY ?name"})]
+    (let [text (tool-text r)]
       (test "query: Alice is present"
         (string/contains? text "Alice") text)
       (test "query: Bob is present"
         (string/contains? text "Bob") text)))
 
   ## ── 9. reset: sparql_update DELETE clears the user triples ────────────
-  (let [[r (call-tool pin pout 9 "sparql_update"
-             {:update "DELETE WHERE { ?s <http://test/name> ?o }"})]]
+  (let [r (call-tool pin pout 9 "sparql_update"
+             {:update "DELETE WHERE { ?s <http://test/name> ?o }"})]
     (test "reset: sparql_update delete succeeded"
       (string/contains? (tool-text r) "successfully")
       (tool-text r)))
 
   ## ── 10. query: user triples are gone after reset ──────────────────────
-  (let [[r (call-tool pin pout 10 "sparql_query"
-             {:query "SELECT ?name WHERE { ?p <http://test/name> ?name }"})]]
-    (let [[text (tool-text r)]]
+  (let [r (call-tool pin pout 10 "sparql_query"
+             {:query "SELECT ?name WHERE { ?p <http://test/name> ?name }"})]
+    (let [text (tool-text r)]
       (test "reset: user triples are cleared"
         (and (not (string/contains? text "Alice"))
              (not (string/contains? text "Bob")))
         (string "store still has data: " text))))
 
   ## ── 11. startup-loaded data survives the reset ─────────────────────────
-  (let [[r (call-tool pin pout 11 "sparql_query"
+  (let [r (call-tool pin pout 11 "sparql_query"
              {:query (string "SELECT (COUNT(?p) AS ?n) WHERE { "
                              "?p <http://www.w3.org/1999/02/22-rdf-syntax-ns#type> "
-                             "<urn:elle:Primitive> }")})]]
-    (let [[text (tool-text r)]]
+                             "<urn:elle:Primitive> }")})]
+    (let [text (tool-text r)]
       (test "reset: startup data is not clobbered"
         (and (not (nil? text))
              (not (string/contains? text "No results")))
@@ -246,7 +247,7 @@
 
   ## ── 12. unknown method returns a JSON-RPC error ──────────────────────
   (send pin {:jsonrpc "2.0" :id 12 :method "bogus/method" :params {}})
-  (let [[r (recv-response pout 12)]]
+  (let [r (recv-response pout 12)]
     (test "unknown method: returns error object"
       (not (nil? (get r "error"))) "expected error response"))
 
@@ -254,9 +255,9 @@
   ## Trigger an error via a bad SPARQL query — the error message should
   ## contain useful info, not "nil" (which happens if the error is a
   ## string and the old code calls (get string-error :message)).
-  (let [[r (call-tool pin pout 13 "sparql_query"
-             {:query "THIS IS NOT VALID SPARQL"})]]
-    (let [[text (tool-text r)]]
+  (let [r (call-tool pin pout 13 "sparql_query"
+             {:query "THIS IS NOT VALID SPARQL"})]
+    (let [text (tool-text r)]
       (test "err-msg: SPARQL error has readable message"
         (and (string/contains? text "SPARQL error")
              (not (string/contains? text "nil")))
@@ -265,9 +266,9 @@
   ## ── 14. err-msg: tool dispatch error has readable message ────────────
   ## Call a tool with bad arguments that causes an internal error.
   ## The error message in the response should not be "nil".
-  (let [[r (call-tool pin pout 14 "verify_invariants"
-             {:path "/nonexistent/invariants.lisp"})]]
-    (let [[text (tool-text r)]]
+  (let [r (call-tool pin pout 14 "verify_invariants"
+             {:path "/nonexistent/invariants.lisp"})]
+    (let [text (tool-text r)]
       (test "err-msg: tool error has readable message"
         (not (string/contains? text "Internal error: nil"))
         (string "got: " text))))
@@ -276,9 +277,9 @@
   ## After sending a ping, the response should arrive within 5 seconds.
   ## This verifies flush is working (without flush, pipe-buffered stdout
   ## may not deliver the response until the buffer fills).
-  (let [[[ok? r] (protect (ev/timeout 5 (fn []
+  (let [[ok? r] (protect (ev/timeout 5 (fn []
       (send pin {:jsonrpc "2.0" :id 15 :method "ping" :params {}})
-      (recv-response pout 15))))]]
+      (recv-response pout 15))))]
     (test "flush: ping response arrives promptly" ok?
       "response was not delivered within 5 seconds"))
 
@@ -286,9 +287,9 @@
   ## Send two pings back-to-back; both should get responses.
   (send pin {:jsonrpc "2.0" :id 16 :method "ping" :params {}})
   (send pin {:jsonrpc "2.0" :id 17 :method "ping" :params {}})
-  (let [[[ok? _] (protect (ev/timeout 10 (fn []
+  (let [[ok? _] (protect (ev/timeout 10 (fn []
       (recv-response pout 16)
-      (recv-response pout 17))))]]
+      (recv-response pout 17))))]
     (test "async: concurrent pings both respond" ok?
       "did not receive both responses within 10 seconds"))
 

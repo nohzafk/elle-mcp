@@ -1,3 +1,4 @@
+(elle/epoch 8)
 #!/usr/bin/env elle
 ## load-all.lisp — extract Elle + Rust graphs and load into oxigraph store
 ##
@@ -66,10 +67,10 @@
     (string/replace "^" "%5E")))
 
 (defn nt-lit [s]
-  (let [[escaped (-> s
+  (let [escaped (-> s
                    (string/replace "\\" "\\\\")
                    (string/replace "\"" "\\\"")
-                   (string/replace "\n" "\\n"))]]
+                   (string/replace "\n" "\\n"))]
     (string/format "\"{}\"" escaped)))
 
 (defn nt-triple [buf s p o]
@@ -80,26 +81,26 @@
 # ── Elle extractor ───────────────────────────────────────────────────
 
 (defn extract-elle-file [buf file]
-  (let [[[ok? src] (protect (file/read file))]]
+  (let [[ok? src] (protect (file/read file))]
     (when ok?
-      (let [[[ok? forms] (protect (read-all src))]]
+      (let [[ok? forms] (protect (read-all src))]
         (when ok?
           (each form in forms
             (when (pair? form)
-              (let [[head (string (first form))]
-                    [ns "urn:elle"]]
+              (let [head (string (first form))
+                    ns "urn:elle"]
                 (case head
                   "defn"
                   (when (>= (length form) 3)
-                    (let* [[parts (drop 1 form)]
-                           [name (string (first parts))]
-                           [params-form (get parts 1)]
-                           [subj (nt-iri (string/format "{}:fn:{}" ns (nt-encode name)))]
-                           [param-names (map (fn [p] (string p))
+                    (let* [parts (drop 1 form)
+                           name (string (first parts))
+                           params-form (get parts 1)
+                           subj (nt-iri (string/format "{}:fn:{}" ns (nt-encode name)))
+                           param-names (map (fn [p] (string p))
                                              (if (array? params-form)
                                                (filter (fn [p] (not (= (string p) "&")))
                                                        params-form)
-                                               ()))]]
+                                               ()))]
                       (nt-triple buf subj rdf-type (nt-iri (string/format "{}:Fn" ns)))
                       (nt-triple buf subj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                       (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))
@@ -107,30 +108,30 @@
                       (each p in param-names
                         (nt-triple buf subj (nt-iri (string/format "{}:param" ns)) (nt-lit p)))
                       (when (>= (length parts) 4)
-                        (let [[maybe-doc (get parts 2)]]
+                        (let [maybe-doc (get parts 2)]
                           (when (string? maybe-doc)
                             (nt-triple buf subj (nt-iri (string/format "{}:doc" ns)) (nt-lit maybe-doc)))))))
 
                   "defmacro"
                   (when (>= (length form) 3)
-                    (let* [[parts (drop 1 form)]
-                           [name (string (first parts))]
-                           [subj (nt-iri (string/format "{}:macro:{}" ns (nt-encode name)))]]
+                    (let* [parts (drop 1 form)
+                           name (string (first parts))
+                           subj (nt-iri (string/format "{}:macro:{}" ns (nt-encode name)))]
                       (nt-triple buf subj rdf-type (nt-iri (string/format "{}:Macro" ns)))
                       (nt-triple buf subj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                       (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))))
 
                   "def"
                   (when (>= (length form) 2)
-                    (let [[name-form (get (drop 1 form) 0)]]
+                    (let [name-form (get (drop 1 form) 0)]
                       (when (symbol? name-form)
-                        (let* [[name (string name-form)]
-                               [subj (nt-iri (string/format "{}:def:{}" ns (nt-encode name)))]]
+                        (let* [name (string name-form)
+                               subj (nt-iri (string/format "{}:def:{}" ns (nt-encode name)))]
                           (when (>= (length form) 3)
-                            (let [[val-form (get (drop 1 form) 1)]]
+                            (let [val-form (get (drop 1 form) 1)]
                               (when (and (pair? val-form) (= (string (first val-form)) "import"))
-                                (let* [[path (string (get (drop 1 val-form) 0))]
-                                       [isubj (nt-iri (string/format "{}:import:{}" ns (nt-encode name)))]]
+                                (let* [path (string (get (drop 1 val-form) 0))
+                                       isubj (nt-iri (string/format "{}:import:{}" ns (nt-encode name)))]
                                   (nt-triple buf isubj rdf-type (nt-iri (string/format "{}:Import" ns)))
                                   (nt-triple buf isubj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                                   (nt-triple buf isubj (nt-iri (string/format "{}:path" ns)) (nt-lit path))
@@ -144,14 +145,14 @@
 # ── Rust extractor ───────────────────────────────────────────────────
 
 (defn extract-rust-file [buf file]
-  (let [[[ok? src] (protect (file/read file))]]
+  (let [[ok? src] (protect (file/read file))]
     (when ok?
-      (let [[[ok? tree] (protect (syn-parse-file src))]]
+      (let [[ok? tree] (protect (syn-parse-file src))]
         (if (not ok?)
           (eprintln "warning: parse error in " file ": " (get tree :message))
           (each item in (syn-items tree)
-            (let [[kind (syn-item-kind item)]
-                  [ns "urn:rust"]]
+            (let [kind (syn-item-kind item)
+                  ns "urn:rust"]
 
               (defn rust-subj [kind-str name]
                 (nt-iri (string/format "{}:{}:{}" ns kind-str (nt-encode (string name)))))
@@ -165,8 +166,8 @@
                   (nt-triple buf subj (nt-iri (string/format "{}:attribute" ns)) (nt-lit attr))))
 
               (defn emit-named [kind-str item]
-                (let* [[name (syn-item-name item)]
-                       [subj (rust-subj kind-str name)]]
+                (let* [name (syn-item-name item)
+                       subj (rust-subj kind-str name)]
                   (nt-triple buf subj rdf-type (nt-iri (string/format "{}:{}" ns kind-str)))
                   (nt-triple buf subj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                   (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))
@@ -175,9 +176,9 @@
 
               (case kind
                 :fn
-                (let* [[info (syn-fn-info item)]
-                       [name (get info :name)]
-                       [subj (rust-subj "fn" name)]]
+                (let* [info (syn-fn-info item)
+                       name (get info :name)
+                       subj (rust-subj "fn" name)]
                   (nt-triple buf subj rdf-type (nt-iri (string/format "{}:Fn" ns)))
                   (nt-triple buf subj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                   (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))
@@ -194,7 +195,7 @@
                   (emit-vis subj item)
                   (emit-attrs subj item)
                   # Emit call edges from function body.
-                  (let [[[ok? calls] (protect (syn-fn-calls item))]]
+                  (let [[ok? calls] (protect (syn-fn-calls item))]
                     (when ok?
                       (each callee in calls
                         (nt-triple buf subj
@@ -202,9 +203,9 @@
                                    (rust-subj "fn" callee))))))
 
                 :struct
-                (let* [[info (syn-struct-fields item)]
-                       [name (get info :name)]
-                       [subj (rust-subj "struct" name)]]
+                (let* [info (syn-struct-fields item)
+                       name (get info :name)
+                       subj (rust-subj "struct" name)]
                   (nt-triple buf subj rdf-type (nt-iri (string/format "{}:Struct" ns)))
                   (nt-triple buf subj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                   (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))
@@ -218,9 +219,9 @@
                   (emit-attrs subj item))
 
                 :enum
-                (let* [[info (syn-enum-variants item)]
-                       [name (get info :name)]
-                       [subj (rust-subj "enum" name)]]
+                (let* [info (syn-enum-variants item)
+                       name (get info :name)
+                       subj (rust-subj "enum" name)]
                   (nt-triple buf subj rdf-type (nt-iri (string/format "{}:Enum" ns)))
                   (nt-triple buf subj (nt-iri (string/format "{}:name" ns)) (nt-lit name))
                   (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))
@@ -235,8 +236,8 @@
                 :type   (emit-named "Type" item)
                 :mod    (emit-named "Mod" item)
                 :use
-                (let* [[path (syn-to-string item)]
-                       [subj (nt-iri (string/format "{}:use:{}:{}" ns (nt-encode file) (nt-encode path)))]]
+                (let* [path (syn-to-string item)
+                       subj (nt-iri (string/format "{}:use:{}:{}" ns (nt-encode file) (nt-encode path)))]
                   (nt-triple buf subj rdf-type (nt-iri (string/format "{}:Use" ns)))
                   (nt-triple buf subj (nt-iri (string/format "{}:path" ns)) (nt-lit path))
                   (nt-triple buf subj (nt-iri (string/format "{}:file" ns)) (nt-lit file))
@@ -247,11 +248,11 @@
                   (emit-named "Const" item)
                   # Extract primitive name→func mappings from PRIMITIVES tables.
                   (when (= (syn-item-name item) "PRIMITIVES")
-                    (let [[[ok? defs] (protect (syn-primitive-defs item))]]
+                    (let [[ok? defs] (protect (syn-primitive-defs item))]
                       (when ok?
                         (each def in defs
-                          (var elle-name (get def :name))
-                          (var rust-fn   (get def :func))
+                          (def @elle-name (get def :name))
+                          (def @rust-fn (get def :func))
                           (nt-triple buf
                                      (nt-iri (string/format "urn:elle:fn:{}" (nt-encode elle-name)))
                                      (nt-iri "urn:elle:implemented-by")

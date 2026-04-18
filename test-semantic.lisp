@@ -1,3 +1,4 @@
+(elle/epoch 8)
 #!/usr/bin/env elle
 ## test-semantic.lisp — exercise the semantic MCP tools via subprocess
 ##
@@ -11,34 +12,34 @@
 
 (defn get-text [response]
   "Extract text content from an MCP tool result."
-  (var result (get response "result"))
+  (def @result (get response "result"))
   (when result
-    (var content (get result "content"))
+    (def @content (get result "content"))
     (when content
       (get (get content 0) "text"))))
 
 # ── Spawn the server ────────────────────────────────────────────────────
 
-(var proc (subprocess/exec "tools/run-elle.sh"
+(def @proc (subprocess/exec "tools/run-elle.sh"
   ["tools/mcp-server.lisp"]
   {:stdin :pipe :stdout :pipe :stderr :null}))
 
-(var pin  (get proc :stdin))
-(var pout (get proc :stdout))
+(def @pin (get proc :stdin))
+(def @pout (get proc :stdout))
 
 (defn send [id method params]
   (port/write pin (string (make-request id method params) "\n"))
   (port/flush pin))
 
 (defn recv []
-  (var line (port/read-line pout))
+  (def @line (port/read-line pout))
   (when (not (nil? line))
     (parse-response line)))
 
 # ── Initialize ──────────────────────────────────────────────────────────
 
 (send 1 "initialize" {})
-(var init (recv))
+(def @init (recv))
 (println "Server:" (get (get (get init "result") "serverInfo") "name")
          (get (get (get init "result") "serverInfo") "version"))
 (println)
@@ -47,7 +48,7 @@
 
 (send 2 "tools/call" {"name" "analyze_file"
                        "arguments" {"path" "examples/signals.lisp"}})
-(var r2 (recv))
+(def @r2 (recv))
 (println "── analyze_file ──")
 (println (get-text r2))
 (println)
@@ -56,7 +57,7 @@
 
 (send 3 "tools/call" {"name" "portrait"
                        "arguments" {"path" "examples/signals.lisp"}})
-(var r3 (recv))
+(def @r3 (recv))
 (println "── module portrait ──")
 (println (get-text r3))
 (println)
@@ -66,7 +67,7 @@
 (send 4 "tools/call" {"name" "portrait"
                        "arguments" {"path" "examples/signals.lisp"
                                     "function" "safe-map"}})
-(var r4 (recv))
+(def @r4 (recv))
 (println "── portrait: safe-map ──")
 (println (get-text r4))
 (println)
@@ -76,7 +77,7 @@
 (send 5 "tools/call" {"name" "signal_query"
                        "arguments" {"path" "examples/signals.lisp"
                                     "query" "silent"}})
-(var r5 (recv))
+(def @r5 (recv))
 (println "── signal_query: silent ──")
 (println (get-text r5))
 (println)
@@ -86,7 +87,7 @@
 (send 6 "tools/call" {"name" "impact"
                        "arguments" {"path" "examples/functions.lisp"
                                     "function" "letter-grade"}})
-(var r6 (recv))
+(def @r6 (recv))
 (println "── impact: letter-grade ──")
 (println (get-text r6))
 

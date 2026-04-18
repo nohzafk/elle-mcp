@@ -1,3 +1,4 @@
+(elle/epoch 8)
 #!/usr/bin/env elle
 ## rust-graph.lisp — extract RDF triples from Rust source files
 ##
@@ -71,10 +72,10 @@
 
 (defn lit [s]
   "Escape a string for ntriples literal."
-  (let [[escaped (-> s
+  (let [escaped (-> s
                    (string/replace "\\" "\\\\")
                    (string/replace "\"" "\\\"")
-                   (string/replace "\n" "\\n"))]]
+                   (string/replace "\n" "\\n"))]
     (string/format "\"{}\"" escaped)))
 
 (defn triple [s p o]
@@ -99,9 +100,9 @@
     (triple subj (pred "attribute") (lit attr))))
 
 (defn process-fn [item file]
-  (let* [[info (fn-info item)]
-         [name (get info :name)]
-         [subj (rust-iri "fn" name)]]
+  (let* [info (fn-info item)
+         name (get info :name)
+         subj (rust-iri "fn" name)]
     (triple subj rdf-type (iri (string/format "{}:Fn" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -117,15 +118,15 @@
     (emit-visibility subj item)
     (emit-attributes subj item)
     # Emit call edges from function body.
-    (let [[[ok? calls] (protect (fn-calls item))]]
+    (let [[ok? calls] (protect (fn-calls item))]
       (when ok?
         (each callee in calls
           (triple subj (pred "calls") (rust-iri "fn" callee)))))))
 
 (defn process-struct [item file]
-  (let* [[info (struct-fields item)]
-         [name (get info :name)]
-         [subj (rust-iri "struct" name)]]
+  (let* [info (struct-fields item)
+         name (get info :name)
+         subj (rust-iri "struct" name)]
     (triple subj rdf-type (iri (string/format "{}:Struct" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -138,9 +139,9 @@
     (emit-attributes subj item)))
 
 (defn process-enum [item file]
-  (let* [[info (enum-variants item)]
-         [name (get info :name)]
-         [subj (rust-iri "enum" name)]]
+  (let* [info (enum-variants item)
+         name (get info :name)
+         subj (rust-iri "enum" name)]
     (triple subj rdf-type (iri (string/format "{}:Enum" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -150,8 +151,8 @@
     (emit-attributes subj item)))
 
 (defn process-trait [item file]
-  (let* [[name (item-name item)]
-         [subj (rust-iri "trait" name)]]
+  (let* [name (item-name item)
+         subj (rust-iri "trait" name)]
     (triple subj rdf-type (iri (string/format "{}:Trait" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -159,8 +160,8 @@
     (emit-attributes subj item)))
 
 (defn process-const [item file]
-  (let* [[name (item-name item)]
-         [subj (rust-iri "const" name)]]
+  (let* [name (item-name item)
+         subj (rust-iri "const" name)]
     (triple subj rdf-type (iri (string/format "{}:Const" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -168,8 +169,8 @@
     (emit-attributes subj item)))
 
 (defn process-static [item file]
-  (let* [[name (item-name item)]
-         [subj (rust-iri "static" name)]]
+  (let* [name (item-name item)
+         subj (rust-iri "static" name)]
     (triple subj rdf-type (iri (string/format "{}:Static" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -177,8 +178,8 @@
     (emit-attributes subj item)))
 
 (defn process-type [item file]
-  (let* [[name (item-name item)]
-         [subj (rust-iri "type" name)]]
+  (let* [name (item-name item)
+         subj (rust-iri "type" name)]
     (triple subj rdf-type (iri (string/format "{}:Type" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -186,8 +187,8 @@
     (emit-attributes subj item)))
 
 (defn process-mod [item file]
-  (let* [[name (item-name item)]
-         [subj (rust-iri "mod" name)]]
+  (let* [name (item-name item)
+         subj (rust-iri "mod" name)]
     (triple subj rdf-type (iri (string/format "{}:Mod" ns)))
     (triple subj (pred "name") (lit name))
     (triple subj (pred "file") (lit file))
@@ -195,8 +196,8 @@
     (emit-attributes subj item)))
 
 (defn process-use [item file]
-  (let* [[path (to-string item)]
-         [subj (iri (string/format "{}:use:{}:{}" ns (encode-name file) (encode-name path)))]]
+  (let* [path (to-string item)
+         subj (iri (string/format "{}:use:{}:{}" ns (encode-name file) (encode-name path)))]
     (triple subj rdf-type (iri (string/format "{}:Use" ns)))
     (triple subj (pred "path") (lit path))
     (triple subj (pred "file") (lit file))
@@ -219,12 +220,12 @@
   "Walk all items looking for PRIMITIVES consts and extract name→func mappings."
   (each item in (items tree)
     (when (= (item-kind item) :const)
-      (var name (item-name item))
+      (def @name (item-name item))
       (when (= name "PRIMITIVES")
-        (var defs (primitive-defs item))
+        (def @defs (primitive-defs item))
         (each def in defs
-          (var elle-name (get def :name))
-          (var rust-fn   (get def :func))
+          (def @elle-name (get def :name))
+          (def @rust-fn (get def :func))
           (triple (elle-iri elle-name)
                   (elle-pred "implemented-by")
                   (rust-iri "fn" rust-fn))
@@ -235,14 +236,14 @@
 # ── Main ─────────────────────────────────────────────────────────────
 
 (each file in files
-  (let [[[ok? src] (protect (file/read file))]]
+  (let [[ok? src] (protect (file/read file))]
     (when ok?
-      (let [[[ok? tree] (protect (parse-file src))]]
+      (let [[ok? tree] (protect (parse-file src))]
         (if (not ok?)
           (eprintln "warning: parse error in " file ": " (get tree :message))
           (begin
             (each item in (items tree)
-              (let [[kind (item-kind item)]]
+              (let [kind (item-kind item)]
                 (case kind
                   :fn      (process-fn item file)
                   :struct  (process-struct item file)

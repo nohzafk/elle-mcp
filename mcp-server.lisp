@@ -1,4 +1,5 @@
 #!/usr/bin/env elle
+(elle/epoch 8)
 
 ## mcp-server.lisp — MCP server: RDF knowledge graph + semantic analysis
 ##
@@ -36,9 +37,9 @@
 (def rdf ((import "std/rdf/elle")))
 
 # syn plugin is optional — Rust graph features are disabled without it.
-(var syn nil)
-(var rust-rdf nil)
-(let [[[ok? s] (protect (import "plugin/syn"))]]
+(def @syn nil)
+(def @rust-rdf nil)
+(let [[ok? s] (protect (import "plugin/syn"))]
   (when ok?
     (assign syn s)
     (assign rust-rdf ((import "std/rdf/rust") syn))))
@@ -61,9 +62,9 @@
 (defn nuke-store [path]
   "Delete a corrupt store directory so it can be recreated fresh.
    Refuses to delete if no oxigraph marker file (LOCK) is found."
-  (let [[entries (glob:glob (string path "/*"))]]
+  (let [entries (glob:glob (string path "/*"))]
     (when (not (empty? entries))
-      (var has-marker false)
+      (def @has-marker false)
       (each e in entries
         (when (or (string/ends-with? e "/LOCK")
                   (string/ends-with? e "/CURRENT"))
@@ -79,7 +80,7 @@
 (defn open-store [path]
   "Open the oxigraph store, nuking and recreating if corrupt."
   (file/mkdir-all path)
-  (let [[[ok? s] (protect (ox:store-open path))]]
+  (let [[ok? s] (protect (ox:store-open path))]
     (if ok? s
       (begin
         (eprintln "store corrupt, rebuilding: " path)
@@ -108,11 +109,11 @@
    Skips entirely when the syn plugin is not available."
   (if (nil? rust-rdf) 0
     (begin
-      (var files @[])
+      (def @files @[])
       (each pattern in rust-source-globs
         (each f in (glob:glob pattern)
           (push files f)))
-      (var count 0)
+      (def @count 0)
       (each file in files
         (when-ok [_ (begin
                       (ox:load store (rust-rdf:file file) :ntriples)
@@ -146,7 +147,7 @@
   "Return cached analysis or analyze the file fresh.
    Guards against concurrent analysis of the same file — if another
    fiber is already analyzing this path, returns the stale cache entry."
-  (var cached (get analysis-cache path))
+  (def @cached (get analysis-cache path))
   (if (not (nil? cached))
     cached
     (if (not (nil? (get analyzing-map path)))
@@ -154,7 +155,7 @@
       (begin
         (put analyzing-map path true)
         (defer (put analyzing-map path nil)
-          (var result (compile/analyze (file/read path) {:file path}))
+          (def @result (compile/analyze (file/read path) {:file path}))
           (put analysis-cache path result)
           (populate-file result path)
           result)))))
@@ -169,13 +170,13 @@
 
 (defn handle-put [value]
   "Store a value in the handle table, return its UUID."
-  (let [[id (uuid-lib:v4)]]
+  (let [id (uuid-lib:v4)]
     (put eval-handles id {:value value})
     id))
 
 (defn handle-get [id]
   "Retrieve a value by handle. Errors if the handle is unknown."
-  (let [[entry (get eval-handles id)]]
+  (let [entry (get eval-handles id)]
     (when (nil? entry)
       (error {:error :unknown-handle :message (string "unknown handle: " id)}))
     (get entry :value)))
@@ -190,10 +191,10 @@
     :array   {:count (length val)}
     :@array  {:count (length val)}
     :list    {:count (length val)}
-    :struct  (let [[ks (keys val)]]
+    :struct  (let [ks (keys val)]
                {:count (length ks)
                 :keys_sample (freeze (take 5 ks))})
-    :@struct (let [[ks (keys val)]]
+    :@struct (let [ks (keys val)]
                {:count (length ks)
                 :keys_sample (freeze (take 5 ks))})
     :string  {:bytes (length val)}
@@ -206,22 +207,22 @@
 
 (defn snapshot-signals [analysis]
   "Build a map of function-name -> signal struct for diff comparison."
-  (var result @{})
+  (def @result @{})
   (each sym in (compile/symbols analysis)
     (when (= (get sym :kind) :function)
-      (var name (get sym :name))
+      (def @name (get sym :name))
       (when-ok [sig (compile/signal analysis (keyword name))]
         (put result name sig))))
   result)
 
 (defn diff-signals [old-sigs new-sigs]
   "Compare two signal snapshots, return {:added :removed :changed}."
-  (var added @[])
-  (var removed @[])
-  (var changed @[])
+  (def @added @[])
+  (def @removed @[])
+  (def @changed @[])
   (each name in (keys new-sigs)
-    (var old-sig (get old-sigs name))
-    (var new-sig (get new-sigs name))
+    (def @old-sig (get old-sigs name))
+    (def @new-sig (get new-sigs name))
     (if (nil? old-sig)
       (push added name)
       (unless (= old-sig new-sig)
@@ -233,10 +234,10 @@
 
 (defn build-notification [path diff]
   "Build a model/updated JSON-RPC notification."
-  (var changes @[])
+  (def @changes @[])
   (each c in (get diff :changed)
-    (var before (get c :before))
-    (var after  (get c :after))
+    (def @before (get c :before))
+    (def @after (get c :after))
     (each field in [:silent :io :yields :errors :exec]
       (when (not (= (get before field) (get after field)))
         (push changes {:name (get c :name) :field (string field)
@@ -277,7 +278,7 @@
 
 (defn ->list [coll]
   "Convert any collection to a list for string/join."
-  (var result ())
+  (def @result ())
   (each x in coll (assign result (cons x result)))
   result)
 
@@ -416,10 +417,10 @@
 # ── SPARQL tool handlers ─────────────────────────────────────────────────
 
 (defn call-sparql-query [arguments]
-  (let [[query (get arguments "query")]]
+  (let [query (get arguments "query")]
     (when (nil? query)
       (error {:error :invalid-params :message "missing required parameter: query"}))
-    (let [[[ok? result] (protect (ev/timeout 30 (fn [] (ox:query store query))))]]
+    (let [[ok? result] (protect (ev/timeout 30 (fn [] (ox:query store query))))]
       (if ok?
         (text-content (cond
           ((boolean? result) (if result "true" "false"))
@@ -428,29 +429,29 @@
         (error-content (string/format "SPARQL error: {}" (err-msg result)))))))
 
 (defn call-sparql-update [arguments]
-  (let [[update-str (get arguments "update")]]
+  (let [update-str (get arguments "update")]
     (when (nil? update-str)
       (error {:error :invalid-params :message "missing required parameter: update"}))
-    (let [[[ok? result] (protect (ox:update store update-str))]]
+    (let [[ok? result] (protect (ox:update store update-str))]
       (if ok?
         (begin (flush-store) (text-content "Update executed successfully."))
         (error-content (string/format "SPARQL update error: {}" (err-msg result)))))))
 
 (defn call-load-rdf [arguments]
-  (let [[data (get arguments "data")]
-        [fmt  (get arguments "format")]]
+  (let [data (get arguments "data")
+        fmt  (get arguments "format")]
     (when (nil? data)
       (error {:error :invalid-params :message "missing required parameter: data"}))
     (when (nil? fmt)
       (error {:error :invalid-params :message "missing required parameter: format"}))
-    (let [[[ok? result] (protect (ox:load store data (keyword fmt)))]]
+    (let [[ok? result] (protect (ox:load store data (keyword fmt)))]
       (if ok?
         (begin (flush-store) (text-content "RDF data loaded successfully."))
         (error-content (string/format "Load error: {}" (err-msg result)))))))
 
 (defn call-dump-rdf [arguments]
-  (let* [[fmt (or (get arguments "format") "turtle")]
-         [[ok? result] (protect (ox:dump store (keyword fmt)))]]
+  (let* [fmt (or (get arguments "format") "turtle")
+         [ok? result] (protect (ox:dump store (keyword fmt)))]
     (if ok?
       (text-content result)
       (error-content (string/format "Dump error: {}" (err-msg result))))))
@@ -458,23 +459,23 @@
 # ── Semantic tool handlers ───────────────────────────────────────────────
 
 (defn call-analyze-file [arguments]
-  (var path (get arguments "path"))
+  (def @path (get arguments "path"))
   (when (nil? path)
     (error {:error :invalid-params :message "missing required parameter: path"}))
 
-  (var analysis (get-or-analyze path))
-  (var syms (compile/symbols analysis))
-  (var diags (compile/diagnostics analysis))
-  (var fn-syms (filter (fn [s] (= (get s :kind) :function)) syms))
+  (def @analysis (get-or-analyze path))
+  (def @syms (compile/symbols analysis))
+  (def @diags (compile/diagnostics analysis))
+  (def @fn-syms (filter (fn [s] (= (get s :kind) :function)) syms))
 
-  (var silent-names @[])
-  (var io-names @[])
-  (var delegating-names @[])
-  (var yielding-names @[])
-  (var observations @[])
+  (def @silent-names @[])
+  (def @io-names @[])
+  (def @delegating-names @[])
+  (def @yielding-names @[])
+  (def @observations @[])
 
   (each sym in fn-syms
-    (var name (get sym :name))
+    (def @name (get sym :name))
     (when-ok [sig (compile/signal analysis (keyword name))]
       (cond
         ((get sig :silent)                         (push silent-names name))
@@ -489,7 +490,7 @@
             (push observations
               (string/format "{}: [{}] {}" name (get o :kind) (get o :message))))))))
 
-  (var out @"")
+  (def @out @"")
   (push out (string/format "Analyzed {} (graph populated)\n\n" path))
   (push out (string/format "Functions: {}\n" (length fn-syms)))
 
@@ -520,25 +521,25 @@
   (text-content (freeze out)))
 
 (defn call-portrait [arguments]
-  (var path (get arguments "path"))
+  (def @path (get arguments "path"))
   (when (nil? path)
     (error {:error :invalid-params :message "missing required parameter: path"}))
-  (var analysis (get-or-analyze path))
-  (var fn-name (get arguments "function"))
+  (def @analysis (get-or-analyze path))
+  (def @fn-name (get arguments "function"))
   (if (nil? fn-name)
     (text-content (portrait-lib:render-module (portrait-lib:module analysis)))
     (text-content (portrait-lib:render (portrait-lib:function analysis (keyword fn-name))))))
 
 (defn call-signal-query [arguments]
-  (var path (get arguments "path"))
-  (var query (get arguments "query"))
+  (def @path (get arguments "path"))
+  (def @query (get arguments "query"))
   (when (nil? path)
     (error {:error :invalid-params :message "missing required parameter: path"}))
   (when (nil? query)
     (error {:error :invalid-params :message "missing required parameter: query"}))
-  (var analysis (get-or-analyze path))
-  (var matches (compile/query-signal analysis (keyword query)))
-  (var out @"")
+  (def @analysis (get-or-analyze path))
+  (def @matches (compile/query-signal analysis (keyword query)))
+  (def @out @"")
   (push out (string/format "Functions matching '{}' in {}:\n\n" query path))
   (if (empty? matches)
     (push out "  (none)\n")
@@ -548,18 +549,18 @@
   (text-content (freeze out)))
 
 (defn call-impact [arguments]
-  (var path (get arguments "path"))
-  (var fn-name (get arguments "function"))
+  (def @path (get arguments "path"))
+  (def @fn-name (get arguments "function"))
   (when (nil? path)
     (error {:error :invalid-params :message "missing required parameter: path"}))
   (when (nil? fn-name)
     (error {:error :invalid-params :message "missing required parameter: function"}))
-  (var analysis (get-or-analyze path))
-  (var sig (compile/signal analysis (keyword fn-name)))
-  (var callers (compile/callers analysis (keyword fn-name)))
-  (var callees (compile/callees analysis (keyword fn-name)))
+  (def @analysis (get-or-analyze path))
+  (def @sig (compile/signal analysis (keyword fn-name)))
+  (def @callers (compile/callers analysis (keyword fn-name)))
+  (def @callees (compile/callees analysis (keyword fn-name)))
 
-  (var out @"")
+  (def @out @"")
   (push out (string/format "Impact analysis for '{}' in {}\n\n" fn-name path))
   (push out (string/format "Current signal: {}\n" sig))
   (push out (string/format "  silent={} yields={} io={}\n\n"
@@ -567,7 +568,7 @@
 
   (push out (string/format "Called by ({} callers):\n" (length callers)))
   (each c in callers
-    (var caller-name (get c :name))
+    (def @caller-name (get c :name))
     (push out (string/format "  {} (line {}, tail={})"
       caller-name (or (get c :line) "?") (or (get c :tail) false)))
     (when-ok [caller-sig (compile/signal analysis (keyword caller-name))]
@@ -582,7 +583,7 @@
     (push out (string/format "  {} (line {}, tail={})\n"
       (get c :name) (or (get c :line) "?") (or (get c :tail) false))))
 
-  (var caps (compile/captures analysis (keyword fn-name)))
+  (def @caps (compile/captures analysis (keyword fn-name)))
   (when (not (empty? caps))
     (push out "\nCaptures:\n")
     (each cap in caps
@@ -593,29 +594,29 @@
   (text-content (freeze out)))
 
 (defn call-verify-invariants [arguments]
-  (var inv-path (or (get arguments "path") ".elle-invariants.lisp"))
-  (var src nil)
-  (let [[[ok? result] (protect (file/read inv-path))]]
+  (def @inv-path (or (get arguments "path") ".elle-invariants.lisp"))
+  (def @src nil)
+  (let [[ok? result] (protect (file/read inv-path))]
     (if ok?
       (assign src result)
       (error {:error :io-error
               :message (string/format "cannot read invariants file: {}" inv-path)})))
-  (var invariants nil)
-  (let [[[ok? result] (protect (eval (read src)))]]
+  (def @invariants nil)
+  (let [[ok? result] (protect (eval (read src)))]
     (if ok?
       (assign invariants result)
       (error {:error :parse-error
               :message (string/format "cannot parse invariants: {}" (err-msg result))})))
 
-  (var out @"")
-  (var pass-count 0)
-  (var fail-count 0)
+  (def @out @"")
+  (def @pass-count 0)
+  (def @fail-count 0)
   (each inv in invariants
-    (var name (get inv :name))
-    (var query (get inv :query))
-    (var expected (get inv :expect))
-    (var actual nil)
-    (let [[[ok? result] (protect (ox:query store query))]]
+    (def @name (get inv :name))
+    (def @query (get inv :query))
+    (def @expected (get inv :expect))
+    (def @actual nil)
+    (let [[ok? result] (protect (ox:query store query))]
       (if ok?
         (assign actual result)
         (begin
@@ -635,16 +636,16 @@
 # ── Transformation tool handlers ─────────────────────────────────────────
 
 (defn call-compile-rename [arguments]
-  (var path (get arguments "path"))
-  (var old-name (get arguments "old_name"))
-  (var new-name (get arguments "new_name"))
-  (var analysis (get-or-analyze path))
+  (def @path (get arguments "path"))
+  (def @old-name (get arguments "old_name"))
+  (def @new-name (get arguments "new_name"))
+  (def @analysis (get-or-analyze path))
   (text-content (json/serialize
     (compile/rename analysis (keyword old-name) (keyword new-name)))))
 
 (defn call-compile-extract [arguments]
-  (var path (get arguments "path"))
-  (var analysis (get-or-analyze path))
+  (def @path (get arguments "path"))
+  (def @analysis (get-or-analyze path))
   (text-content (json/serialize
     (compile/extract analysis
       {:from  (keyword (get arguments "from"))
@@ -652,8 +653,8 @@
        :name  (keyword (get arguments "name"))}))))
 
 (defn call-compile-parallelize [arguments]
-  (var path (get arguments "path"))
-  (var analysis (get-or-analyze path))
+  (def @path (get arguments "path"))
+  (def @analysis (get-or-analyze path))
   (text-content (json/serialize
     (compile/parallelize analysis (map keyword (get arguments "functions"))))))
 
@@ -667,27 +668,27 @@
   "Recursively query Rust call edges, return a tree of {:name :file :line :iri :calls}."
   (if (>= depth max-depth) []
   (begin
-  (var rows (ox:query store
+  (def @rows (ox:query store
     (string/format "SELECT ?callee ?file ?line ?target WHERE {{
        <{}> <urn:rust:calls> ?target .
        ?target <urn:rust:name> ?callee .
        OPTIONAL {{ ?target <urn:rust:file> ?file }}
        OPTIONAL {{ ?target <urn:rust:line> ?line }}
      }}" rust-fn)))
-  (var result @[])
+  (def @result @[])
   (each row in rows
-    (var callee-name (rdf-val (get row :callee)))
-    (var callee-file (when (get row :file) (rdf-val (get row :file))))
-    (var callee-line (when (get row :line) (rdf-val (get row :line))))
-    (var callee-iri (string/format "urn:rust:fn:{}" (rust-rdf:encode-name callee-name)))
-    (var children (query-rust-callees callee-iri (+ depth 1) max-depth))
+    (def @callee-name (rdf-val (get row :callee)))
+    (def @callee-file (when (get row :file) (rdf-val (get row :file))))
+    (def @callee-line (when (get row :line) (rdf-val (get row :line))))
+    (def @callee-iri (string/format "urn:rust:fn:{}" (rust-rdf:encode-name callee-name)))
+    (def @children (query-rust-callees callee-iri (+ depth 1) max-depth))
     (push result {:name callee-name :file callee-file :line callee-line
                   :iri callee-iri :calls children}))
   (freeze result))))
 
 (defn format-rust-tree [nodes indent]
   "Render a Rust call tree as indented text with file:line and IRI."
-  (var out @"")
+  (def @out @"")
   (each node in nodes
     (push out (string/format "{}[rust] {}" indent (get node :name)))
     (when (get node :file)
@@ -700,34 +701,34 @@
   (when (nil? rust-rdf)
     (error {:error :unavailable
             :message "trace requires the syn plugin (plugin/syn not found)"}))
-  (var path (get arguments "path"))
-  (var fn-name (get arguments "function"))
-  (var max-depth (or (get arguments "depth") 2))
+  (def @path (get arguments "path"))
+  (def @fn-name (get arguments "function"))
+  (def @max-depth (or (get arguments "depth") 2))
   (when (nil? path)
     (error {:error :invalid-params :message "missing required parameter: path"}))
   (when (nil? fn-name)
     (error {:error :invalid-params :message "missing required parameter: function"}))
 
-  (var analysis (get-or-analyze path))
-  (var callees (compile/callees analysis (keyword fn-name)))
+  (def @analysis (get-or-analyze path))
+  (def @callees (compile/callees analysis (keyword fn-name)))
 
-  (var out @"")
+  (def @out @"")
   (push out (string/format "Trace: {} in {}\n\n" fn-name path))
 
   (each callee in callees
-    (var callee-name (get callee :name))
-    (var callee-line (or (get callee :line) "?"))
-    (var callee-tail (or (get callee :tail) false))
+    (def @callee-name (get callee :name))
+    (def @callee-line (or (get callee :line) "?"))
+    (def @callee-tail (or (get callee :tail) false))
 
     # Check if this callee is a primitive with a Rust implementation
-    (var impl-rows (ox:query store
+    (def @impl-rows (ox:query store
       (string/format "SELECT ?impl ?file ?line WHERE {{
          <urn:elle:fn:{}> <urn:elle:implemented-by> ?impl .
          OPTIONAL {{ ?impl <urn:rust:file> ?file }}
          OPTIONAL {{ ?impl <urn:rust:line> ?line }}
        }}" (rust-rdf:encode-name callee-name))))
 
-    (var elle-fn-iri (string/format "urn:elle:fn:{}" (rust-rdf:encode-name callee-name)))
+    (def @elle-fn-iri (string/format "urn:elle:fn:{}" (rust-rdf:encode-name callee-name)))
     (push out (string/format "  [elle] {} (line {}, tail={})  <{}>\n"
       callee-name callee-line callee-tail elle-fn-iri))
 
@@ -740,14 +741,14 @@
 
       # Primitive — trace into Rust
       (each impl-row in impl-rows
-        (var impl-iri (rdf-val (get impl-row :impl)))
-        (var rust-file (when (get impl-row :file) (rdf-val (get impl-row :file))))
-        (var rust-line (when (get impl-row :line) (rdf-val (get impl-row :line))))
+        (def @impl-iri (rdf-val (get impl-row :impl)))
+        (def @rust-file (when (get impl-row :file) (rdf-val (get impl-row :file))))
+        (def @rust-line (when (get impl-row :line) (rdf-val (get impl-row :line))))
 
         # Extract the Rust function name from the IRI
-        (var rust-name-rows (ox:query store
+        (def @rust-name-rows (ox:query store
           (string/format "SELECT ?name WHERE {{ <{}> <urn:rust:name> ?name }}" impl-iri)))
-        (var rust-name (if (empty? rust-name-rows)
+        (def @rust-name (if (empty? rust-name-rows)
                          impl-iri
                          (rdf-val (get (first rust-name-rows) :name))))
 
@@ -757,7 +758,7 @@
         (push out (string/format "  <{}>\n" impl-iri))
 
         # Trace deeper into Rust calls
-        (var children (query-rust-callees impl-iri 0 max-depth))
+        (def @children (query-rust-callees impl-iri 0 max-depth))
         (push out (format-rust-tree children "         ")))))
 
   (text-content (freeze out)))
@@ -765,23 +766,23 @@
 # ── Eval tool handler ──────────────────────────────────────────────────
 
 (defn call-eval [arguments]
-  (let* [[lambda-src (get arguments "lambda")]
-         [input-ids  (or (get arguments "inputs") [])]
-         [timeout-ms (or (get arguments "timeout_ms") 10000)]]
+  (let* [lambda-src (get arguments "lambda")
+         input-ids  (or (get arguments "inputs") [])
+         timeout-ms (or (get arguments "timeout_ms") 10000)]
 
     (when (nil? lambda-src)
       (error {:error :invalid-params :message "missing required parameter: lambda"}))
 
     # Parse the lambda source
-    (var parsed nil)
-    (let [[[ok? val] (protect (read lambda-src))]]
+    (def @parsed nil)
+    (let [[ok? val] (protect (read lambda-src))]
       (if ok? (assign parsed val)
         (error {:error :parse-error
                 :message (string "cannot parse lambda: " (err-msg val))})))
 
     # Eval to get a callable value
-    (var callable nil)
-    (let [[[ok? val] (protect (eval parsed))]]
+    (def @callable nil)
+    (let [[ok? val] (protect (eval parsed))]
       (if ok? (assign callable val)
         (error {:error :eval-error
                 :message (string "lambda eval failed: " (err-msg val))})))
@@ -792,14 +793,14 @@
                          (type-of callable))}))
 
     # Resolve input handles
-    (var input-vals @[])
+    (def @input-vals @[])
     (each id in input-ids
       (push input-vals (handle-get id)))
 
     # Arity check for closures
     (when (= (type-of callable) :closure)
-      (let [[a (arity callable)]
-            [n (length input-ids)]]
+      (let [a (arity callable)
+            n (length input-ids)]
         (cond
           ((nil? a)     nil)
           ((integer? a) (unless (= a n)
@@ -812,25 +813,25 @@
 
     # Set up temp files for I/O capture
     (file/mkdir-all ".elle-mcp")
-    (let* [[eval-id (uuid-lib:v4)]
-           [out-path (string ".elle-mcp/eval-" eval-id "-out")]
-           [err-path (string ".elle-mcp/eval-" eval-id "-err")]
-           [out-port (port/open out-path :write)]
-           [err-port (port/open err-path :write)]]
+    (let* [eval-id (uuid-lib:v4)
+           out-path (string ".elle-mcp/eval-" eval-id "-out")
+           err-path (string ".elle-mcp/eval-" eval-id "-err")
+           out-port (port/open out-path :write)
+           err-port (port/open err-path :write)]
       (defer (begin
                (protect (file/delete out-path))
                (protect (file/delete err-path)))
 
         # Execute with I/O capture and optional timeout
-        (let* [[input-list (freeze input-vals)]
-               [thunk (fn []
+        (let* [input-list (freeze input-vals)
+               thunk (fn []
                         (parameterize ((*stdout* out-port) (*stderr* err-port))
-                          (apply callable input-list)))]
-               [start (clock/monotonic)]
-               [[ok? result] (if (and timeout-ms (> timeout-ms 0))
+                          (apply callable input-list)))
+               start (clock/monotonic)
+               [ok? result] (if (and timeout-ms (> timeout-ms 0))
                                (protect (ev/timeout (/ timeout-ms 1000) thunk))
-                               (protect (thunk)))]
-               [duration-ns (int (* (- (clock/monotonic) start) 1000000000))]]
+                               (protect (thunk)))
+               duration-ns (int (* (- (clock/monotonic) start) 1000000000))]
 
           # Flush and close captured I/O ports
           (protect (port/flush out-port))
@@ -839,20 +840,20 @@
           (protect (port/close err-port))
 
           # Read captured output
-          (var stdout-text "")
-          (var stderr-text "")
-          (let [[[rd-ok? rd-val] (protect (file/read out-path))]]
+          (def @stdout-text "")
+          (def @stderr-text "")
+          (let [[rd-ok? rd-val] (protect (file/read out-path))]
             (when rd-ok? (assign stdout-text rd-val)))
-          (let [[[rd-ok? rd-val] (protect (file/read err-path))]]
+          (let [[rd-ok? rd-val] (protect (file/read err-path))]
             (when rd-ok? (assign stderr-text rd-val)))
 
           # Build response
-          (let* [[handle (handle-put result)]
-                 [kind (value-kind result (not ok?))]
-                 [shape (if ok?
+          (let* [handle (handle-put result)
+                 kind (value-kind result (not ok?))
+                 shape (if ok?
                           (value-shape result)
                           {:reason (get result :error)
-                           :message (err-msg result)})]]
+                           :message (err-msg result)})]
             (text-content (json/serialize
               {:ok ok?
                :handle handle
@@ -935,25 +936,25 @@
 
 (defn git-sha []
   "Get current HEAD SHA."
-  (let [[proc (subprocess/exec "git" @["rev-parse" "HEAD"])]]
+  (let [proc (subprocess/exec "git" @["rev-parse" "HEAD"])]
     (string/trim (port/read-all (get proc :stdout)))))
 
 (defn git-clean? []
   "Check if worktree is clean."
-  (let [[proc (subprocess/exec "git" @["status" "--porcelain"])]]
+  (let [proc (subprocess/exec "git" @["status" "--porcelain"])]
     (empty? (string/trim (port/read-all (get proc :stdout))))))
 
 (defn run-make-target [target jit-override]
   "Run a make target, return {:exit-code :stdout :stderr :duration}."
-  (let* [[start (clock/monotonic)]
-         [env-args (if jit-override
+  (let* [start (clock/monotonic)
+         env-args (if jit-override
                      {:env {:ELLE_JIT jit-override}}
-                     {})]
-         [proc (subprocess/exec "make" @[target] env-args)]
-         [stdout (port/read-all (get proc :stdout))]
-         [stderr (port/read-all (get proc :stderr))]
-         [status (subprocess/wait proc)]
-         [duration (- (clock/monotonic) start)]]
+                     {})
+         proc (subprocess/exec "make" @[target] env-args)
+         stdout (port/read-all (get proc :stdout))
+         stderr (port/read-all (get proc :stderr))
+         status (subprocess/wait proc)
+         duration (- (clock/monotonic) start)]
     {:exit-code (get status :exit-code)
      :stdout stdout
      :stderr stderr
@@ -961,7 +962,7 @@
 
 (defn parse-test-failures [stderr]
   "Extract structured failure info from test stderr."
-  (var failures @[])
+  (def @failures @[])
   (each line in (string/split stderr "\n")
     (when (string/find line "✗")
       (push failures {:message (string/trim line)})))
@@ -969,7 +970,7 @@
 
 (defn turtle-escape [s]
   "Escape a string for embedding in a Turtle literal."
-  (var esc (string/replace s "\\" "\\\\"))
+  (def @esc (string/replace s "\\" "\\\\"))
   (assign esc (string/replace esc "\"" "\\\""))
   (assign esc (string/replace esc "\n" "\\n"))
   (assign esc (string/replace esc "\r" "\\r"))
@@ -977,12 +978,12 @@
 
 (defn store-test-result [sha mode clean passed duration failures stderr]
   "Store test result as RDF triples, including truncated stderr."
-  (let* [[iri (string/format "urn:test:{}:{}" sha mode)]
-         [timestamp (clock/realtime)]
-         [trunc-stderr (if (> (length stderr) 10000)
+  (let* [iri (string/format "urn:test:{}:{}" sha mode)
+         timestamp (clock/realtime)
+         trunc-stderr (if (> (length stderr) 10000)
                          (string (slice stderr 0 10000) "\n...[truncated]")
-                         stderr)]
-         [ttl (string/format
+                         stderr)
+         ttl (string/format
                "<{}> a <urn:elle:TestRun> ;
                    <urn:elle:sha> \"{}\" ;
                    <urn:elle:mode> \"{}\" ;
@@ -997,7 +998,7 @@
                (if passed "true" "false")
                duration timestamp
                (length failures)
-               (turtle-escape trunc-stderr))]]
+               (turtle-escape trunc-stderr))]
     # Delete old result for this sha+mode, then insert new.
     # Both are FFI calls (no yield), so the gap is crash-only.
     (protect (ox:update store
@@ -1006,37 +1007,37 @@
     (flush-store)))
 
 (defn call-test-run [arguments]
-  (let* [[mode (get arguments "mode")]
-         [jit-override (get arguments "jit")]
-         [sha (git-sha)]
-         [clean (git-clean?)]
-         [target (case mode
+  (let* [mode (get arguments "mode")
+         jit-override (get arguments "jit")
+         sha (git-sha)
+         clean (git-clean?)
+         target (case mode
                    "smoke" "smoke"
                    "test"  "test"
-                   "single" (let [[path (get arguments "path")]]
+                   "single" (let [path (get arguments "path")]
                               (when (nil? path)
                                 (error {:error :invalid-params
                                         :message "single mode requires path parameter"}))
                               nil)
                    (error {:error :invalid-params
-                           :message (string/format "unknown mode: {}" mode)}))]
-         [result (if target
+                           :message (string/format "unknown mode: {}" mode)}))
+         result (if target
                    (run-make-target target jit-override)
-                   (let [[path (get arguments "path")]
-                         [elle-bin (or (sys/env "ELLE") "./target/debug/elle")]
-                         [jit-flag (case jit-override
+                   (let [path (get arguments "path")
+                         elle-bin (or (sys/env "ELLE") "./target/debug/elle")
+                         jit-flag (case jit-override
                                      "off" "--jit=0"
                                      "eager" "--jit=1"
-                                     nil "")]]
-                     (let* [[args (if (empty? jit-flag) @[path] @[jit-flag path])]
-                            [proc (subprocess/exec elle-bin args)]
-                            [stdout (port/read-all (get proc :stdout))]
-                            [stderr (port/read-all (get proc :stderr))]
-                            [status (subprocess/wait proc)]]
+                                     nil "")]
+                     (let* [args (if (empty? jit-flag) @[path] @[jit-flag path])
+                            proc (subprocess/exec elle-bin args)
+                            stdout (port/read-all (get proc :stdout))
+                            stderr (port/read-all (get proc :stderr))
+                            status (subprocess/wait proc)]
                        {:exit-code (get status :exit-code)
-                        :stdout stdout :stderr stderr :duration 0})))]
-         [passed (= (get result :exit-code) 0)]
-         [failures (if passed () (parse-test-failures (get result :stderr)))]]
+                        :stdout stdout :stderr stderr :duration 0})))
+         passed (= (get result :exit-code) 0)
+         failures (if passed () (parse-test-failures (get result :stderr)))]
     (store-test-result sha mode clean passed (get result :duration) failures
                        (get result :stderr))
     (text-content (json/pretty
@@ -1049,7 +1050,7 @@
 
 (defn query-test-result [sha mode]
   "Query stored test result for sha+mode."
-  (let [[query (string/format
+  (let [query (string/format
                  "SELECT ?passed ?clean ?duration ?failed_count ?timestamp
                   WHERE {{
                     <urn:test:{}:{}> <urn:elle:passed> ?passed ;
@@ -1057,27 +1058,27 @@
                                      <urn:elle:duration> ?duration ;
                                      <urn:elle:failed-count> ?failed_count ;
                                      <urn:elle:timestamp> ?timestamp .
-                  }}" sha mode)]]
-    (let [[[ok? rows] (protect (ox:query store query))]]
+                  }}" sha mode)]
+    (let [[ok? rows] (protect (ox:query store query))]
       (if (and ok? (not (empty? rows)))
         (first rows)
         nil))))
 
 (defn call-test-status [arguments]
-  (let* [[sha (or (get arguments "sha") (git-sha))]
-         [mode (get arguments "mode")]
-         [modes (if mode (list mode) (list "smoke" "test"))]]
-    (var results @[])
+  (let* [sha (or (get arguments "sha") (git-sha))
+         mode (get arguments "mode")
+         modes (if mode (list mode) (list "smoke" "test"))]
+    (def @results @[])
     (each m in modes
-      (let [[r (query-test-result sha m)]]
+      (let [r (query-test-result sha m)]
         (when r (push results (put r "mode" m)))))
     (if (empty? results)
       (text-content (json/pretty {:sha sha :results "no test records found"}))
       (text-content (json/pretty {:sha sha :results (freeze results)})))))
 
 (defn call-test-history [arguments]
-  (let* [[limit (or (get arguments "limit") 10)]
-         [query (string/format
+  (let* [limit (or (get arguments "limit") 10)
+         query (string/format
                   "SELECT ?sha ?mode ?passed ?clean ?duration ?timestamp
                    WHERE {{
                      ?run a <urn:elle:TestRun> ;
@@ -1089,19 +1090,19 @@
                           <urn:elle:timestamp> ?timestamp .
                    }}
                    ORDER BY DESC(?timestamp)
-                   LIMIT {}" limit)]]
-    (let [[[ok? rows] (protect (ox:query store query))]]
+                   LIMIT {}" limit)]
+    (let [[ok? rows] (protect (ox:query store query))]
       (if ok?
         (text-content (json/pretty rows))
         (error-content "Failed to query test history")))))
 
 (defn call-test-gate [arguments]
-  (let* [[sha (or (get arguments "sha") (git-sha))]
-         [result (query-test-result sha "test")]]
+  (let* [sha (or (get arguments "sha") (git-sha))
+         result (query-test-result sha "test")]
     (if (nil? result)
       (text-content (json/pretty {:ready false :reason "no test record for this SHA"}))
-      (let [[passed (get result "passed")]
-            [clean  (get result "clean")]]
+      (let [passed (get result "passed")
+            clean  (get result "clean")]
         (cond
           ((not passed)
            (text-content (json/pretty {:ready false :reason "tests failed"})))
@@ -1111,23 +1112,23 @@
            (text-content (json/pretty {:ready true :sha sha}))))))))
 
 (defn call-push [arguments gated]
-  (let* [[remote (or (get arguments "remote") "origin")]
-         [branch (get arguments "branch")]]
+  (let* [remote (or (get arguments "remote") "origin")
+         branch (get arguments "branch")]
     (when (nil? branch)
       (error {:error :invalid-params :message "missing required parameter: branch"}))
     (when gated
-      (let* [[sha (git-sha)]
-             [result (query-test-result sha "test")]]
+      (let* [sha (git-sha)
+             result (query-test-result sha "test")]
         (when (or (nil? result) (not (get result "passed")) (not (get result "clean")))
-          (let [[reason (cond
+          (let [reason (cond
                           ((nil? result) "no test record for HEAD")
                           ((not (get result "passed")) "tests failed")
-                          (true "worktree was dirty"))]]
+                          (true "worktree was dirty"))]
             (error {:error :test-gate-failed
                     :message (string/format "push blocked: {}" reason)})))))
-    (let* [[proc (subprocess/exec "git" @["push" remote branch])]
-           [stderr (port/read-all (get proc :stderr))]
-           [status (subprocess/wait proc)]]
+    (let* [proc (subprocess/exec "git" @["push" remote branch])
+           stderr (port/read-all (get proc :stderr))
+           status (subprocess/wait proc)]
       (if (= (get status :exit-code) 0)
         (text-content (string/format "pushed {} to {}/{}" (git-sha) remote branch))
         (error-content (string/format "push failed: {}" stderr))))))
@@ -1179,9 +1180,9 @@
   (jsonrpc-result id {:tools all-tools}))
 
 (defn handle-tools-call [id params]
-  (let [[name (get params "name")]
-        [arguments (or (get params "arguments") {})]]
-    (let [[[ok? content] (protect (dispatch-tool name arguments))]]
+  (let [name (get params "name")
+        arguments (or (get params "arguments") {})]
+    (let [[ok? content] (protect (dispatch-tool name arguments))]
       (if ok?
         (jsonrpc-result id {:content content})
         (jsonrpc-result id {:content (error-content
@@ -1193,9 +1194,9 @@
   (jsonrpc-result id {}))
 
 (defn handle-request [msg]
-  (let [[method (get msg "method")]
-        [id     (get msg "id")]
-        [params (or (get msg "params") {})]]
+  (let [method (get msg "method")
+        id     (get msg "id")
+        params (or (get msg "params") {})]
     (if (nil? id)
       nil
       (case method
@@ -1216,7 +1217,7 @@
 (eprintln "  primitives: loaded")
 
 (def populator (fiber/new (fn []
-  (var count (populate-rust))
+  (def @count (populate-rust))
   (eprintln "  rust: " count " files loaded")
   (send-response {:jsonrpc "2.0"
                   :method "notifications/model/populated"
@@ -1234,39 +1235,39 @@
 # Watcher fiber — restarts on crash, capped at 5 attempts.
 (eprintln "  watch: enabled")
 (ev/spawn (fn []
-  (var restarts 0)
+  (def @restarts 0)
   (while (< restarts 5)
-    (let [[[ok? err] (protect
+    (let [[ok? err] (protect
             (begin
-              (var watcher (watch:start "." :filter ".lisp"))
+              (def @watcher (watch:start "." :filter ".lisp"))
               (watch:each watcher (fn [event]
-                (let [[path (get event :path)]]
+                (let [path (get event :path)]
                   (when (and (string/ends-with? path ".lisp")
                              (contains? |:create :modify| (get event :kind)))
-                    (let [[[ok? err] (protect
+                    (let [[ok? err] (protect
                             (begin
-                              (var old-analysis (get analysis-cache path))
-                              (var old-sigs (when (not (nil? old-analysis))
+                              (def @old-analysis (get analysis-cache path))
+                              (def @old-sigs (when (not (nil? old-analysis))
                                               (snapshot-signals old-analysis)))
                               (invalidate-cache path)
-                              (var new-analysis (get-or-analyze path))
-                              (var new-sigs (snapshot-signals new-analysis))
+                              (def @new-analysis (get-or-analyze path))
+                              (def @new-sigs (snapshot-signals new-analysis))
                               (when (not (nil? old-sigs))
-                                (var diff (diff-signals old-sigs new-sigs))
+                                (def @diff (diff-signals old-sigs new-sigs))
                                 (when (or (not (empty? (get diff :added)))
                                           (not (empty? (get diff :removed)))
                                           (not (empty? (get diff :changed))))
                                   (send-response (build-notification path diff))))
-                              (eprintln "  re-analyzed: " path)))]]
+                              (eprintln "  re-analyzed: " path)))]
                       (unless ok?
-                        (eprintln "  watch error for " path ": " (err-msg err))))))))))]]
+                        (eprintln "  watch error for " path ": " (err-msg err))))))))))]
       (unless ok?
         (eprintln "  watcher crashed (" (inc restarts) "/5): " (err-msg err))
         (assign restarts (inc restarts))
         (ev/sleep 1))))))
 
 (forever
-  (let [[line (port/read-line (*stdin*))]]
+  (let [line (port/read-line (*stdin*))]
     (when (nil? line)
       (eprintln "stdin closed, shutting down")
       (break))
@@ -1274,12 +1275,12 @@
     (if (> (length line) 10000000)
       (send-response (jsonrpc-error nil -32600 "request too large"))
       (unless (empty? line)
-        (let [[[ok? msg] (protect (json/parse line))]]
+        (let [[ok? msg] (protect (json/parse line))]
           (if (not ok?)
             (begin
               (eprintln "JSON parse error: " (err-msg msg))
               (send-response (jsonrpc-error nil -32700 "parse error")))
-            (let [[response (handle-request msg)]]
+            (let [response (handle-request msg)]
               (unless (nil? response)
                 (send-response response)))))))))
 

@@ -1,3 +1,4 @@
+(elle/epoch 8)
 #!/usr/bin/env elle
 ## semantic-graph.lisp — extract semantic RDF triples from Elle source files
 ##
@@ -10,7 +11,7 @@
 
 (def rdf ((import "std/rdf/elle")))
 
-(var args (drop 1 (sys/args)))
+(def @args (drop 1 (sys/args)))
 
 (when (empty? args)
   (println "usage: elle tools/semantic-graph.lisp -- file1.lisp ...")
@@ -19,19 +20,19 @@
 # ── Main ────────────────────────────────────────────────────────────────
 
 # Emit Rust primitives first so elle:calls edges resolve
-(var out @"")
+(def @out @"")
 (push out (rdf:primitives))
 (eprintln (string/format "emitted {} Rust primitives" (length (compile/primitives))))
 
-(var file-count 0)
+(def @file-count 0)
 
 (each file in args
   (assign file-count (+ file-count 1))
 
-  (let [[[read-ok? src] (protect (file/read file))]]
+  (let [[read-ok? src] (protect (file/read file))]
     (if (not read-ok?)
       (eprintln "  skip (read error): " file)
-      (let [[[analyze-ok? analysis] (protect (compile/analyze src {:file file}))]]
+      (let [[analyze-ok? analysis] (protect (compile/analyze src {:file file}))]
         (if (not analyze-ok?)
           (eprintln "  skip (compile error): " file)
           (push out (rdf:file analysis file)))))))
