@@ -6,7 +6,7 @@
 ## to link Elle primitives to their Rust implementations.
 ##
 ## Usage:
-##   (def syn (import "syn"))
+##   (def syn (import "plugin/syn"))
 ##   (def rust-rdf ((import "tools/rust-rdf-lib") syn))
 ##   (def triples (rust-rdf:file "src/main.rs"))
 ##   (def links   (rust-rdf:primitive-links "src/primitives/io.rs"))

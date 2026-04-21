@@ -10,7 +10,7 @@
 ##   elle elle-graph.lisp                          # defaults to *.lisp in CWD
 
 (elle/epoch 5)
-(def glob-plugin (import "glob"))
+(def glob-plugin (import "plugin/glob"))
 (def do-glob (get glob-plugin :glob))
 
 (def args (drop 1 (sys/args)))

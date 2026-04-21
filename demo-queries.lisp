@@ -3,7 +3,7 @@
 ## Run: elle demo-queries.lisp
 
 (elle/epoch 5)
-(def ox (import "oxigraph"))
+(def ox (import "plugin/oxigraph"))
 
 # Fresh in-memory store for demo
 (def store (ox:store-new))
