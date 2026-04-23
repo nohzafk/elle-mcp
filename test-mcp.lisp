@@ -17,8 +17,6 @@
 ##   elle tools/test-mcp.lisp ./target/debug/elle
 ##   ELLE_BIN=./target/debug/elle elle tools/test-mcp.lisp
 
-(elle/epoch 5)
-
 ## ── Configuration ────────────────────────────────────────────────────────
 
 (def test-args (sys/args))
