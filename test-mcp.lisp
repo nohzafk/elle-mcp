@@ -1,5 +1,5 @@
-(elle/epoch 8)
 #!/usr/bin/env elle
+(elle/epoch 8)
 ## test-mcp.lisp — integration test for tools/mcp-server.lisp
 ##
 ## Spawns the MCP server as a subprocess against a freshly-nuked store,
