@@ -1,6 +1,6 @@
 #!/usr/bin/env elle
 (elle/epoch 8)
-## test-mcp.lisp — integration test for tools/mcp-server.lisp
+## test-mcp.lisp — integration test for mcp/mcp-server.lisp
 ##
 ## Spawns the MCP server as a subprocess against a freshly-nuked store,
 ## exercises initialize/tools-list/ping, verifies the startup-population
@@ -111,7 +111,7 @@
 (rm-rf test-store)
 
 (def proc
-  (subprocess/exec elle-bin ["tools/mcp-server.lisp" "--" test-store]))
+  (subprocess/exec elle-bin ["mcp/mcp-server.lisp" "--" test-store]))
 (def pin  (get proc :stdin))
 (def pout (get proc :stdout))
 

@@ -1224,8 +1224,8 @@
                   :params {:primitives true :rust count}}))
   |:yield|))
 
-# Initial resume — starts populate-rust, runs until first (yield nil)
-(fiber/resume populator nil)
+# Population is deferred — tick-populator drives it one step per
+# main-loop iteration, so initialize can respond immediately.
 
 (defn tick-populator []
   "Resume the population fiber one step if it's still alive."
