@@ -112,7 +112,8 @@
       (def @files @[])
       (each pattern in rust-source-globs
         (each f in (glob:glob pattern)
-          (push files f)))
+          (unless (string/contains? f "/target/")
+            (push files f))))
       (def @count 0)
       (each file in files
         (when-ok [_ (begin
