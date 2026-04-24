@@ -155,26 +155,11 @@
     (test "ping: has result"
       (not (nil? (get r "result"))) "missing result"))
 
-  ## ── 4. drive population to completion ───────────────────────────────────
-  ## The server populates the graph one file per request. Send pings to
-  ## drive the populator forward until the notification arrives.
-  (def @ping-id 100)
-  (def @populated false)
-  (while (not populated)
-    (send pin {:jsonrpc "2.0" :id ping-id :method "ping" :params {}})
-    (def @result nil)
-    (while (nil? result)
-      (let [line (port/read-line pout)]
-        (when (nil? line)
-          (error {:error :eof :message "server closed stdout"}))
-        (let [msg (json/parse line)]
-          (if (= (get msg "method") "notifications/model/populated")
-            (begin
-              (assign populated true)
-              (assign result msg))
-            (when (and (not (nil? (get msg "id"))) (= (get msg "id") ping-id))
-              (assign result msg))))))
-    (assign ping-id (inc ping-id)))
+  ## ── 4. wait for population to complete ───────────────────────────────────
+  ## Population completes on the first tick. The notification may already
+  ## be buffered from earlier recv-response calls; check there first,
+  ## then fall back to sending pings to drive the populator.
+  (def @populated (recv-notification pout "notifications/model/populated"))
 
   (test "population: completed" populated "population notification never arrived")
 

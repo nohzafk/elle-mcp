@@ -100,7 +100,7 @@
   (flush-store))
 
 (def rust-source-globs
-  ["src/**/*.rs" "plugins/**/*.rs" "tests/**/*.rs"
+  ["src/**/*.rs" "plugins/*/src/**/*.rs" "tests/**/*.rs"
    "benches/**/*.rs" "patches/**/*.rs"])
 
 (defn populate-rust []
@@ -112,8 +112,7 @@
       (def @files @[])
       (each pattern in rust-source-globs
         (each f in (glob:glob pattern)
-          (unless (string/contains? f "/target/")
-            (push files f))))
+          (push files f)))
       (def @count 0)
       (each file in files
         (when-ok [_ (begin
@@ -1212,26 +1211,26 @@
 (eprintln "elle-mcp server starting (v0.6.0)")
 (eprintln "  store: " store-path)
 
-# Population fiber — yields between work units so the main loop
-# can process requests between FFI calls.
+# Populate primitives synchronously (fast); Rust population is
+# deferred to the fiber below, driven by tick-populator in the main loop.
 (populate-primitives)
 (eprintln "  primitives: loaded")
 
 (def populator (fiber/new (fn []
-  (def @count (populate-rust))
-  (eprintln "  rust: " count " files loaded")
-  (send-response {:jsonrpc "2.0"
-                  :method "notifications/model/populated"
-                  :params {:primitives true :rust count}}))
+  (populate-rust))
   |:yield|))
 
-# Population is deferred — tick-populator drives it one step per
-# main-loop iteration, so initialize can respond immediately.
-
 (defn tick-populator []
-  "Resume the population fiber one step if it's still alive."
-  (when (= (fiber/status populator) :paused)
-    (fiber/resume populator nil)))
+  "Drain the population fiber to completion, then send the notification."
+  (when (contains? |:new :paused| (fiber/status populator))
+    (def @last nil)
+    (while (contains? |:new :paused| (fiber/status populator))
+      (assign last (fiber/resume populator nil)))
+    (def count (or last 0))
+    (eprintln "  rust: " count " files loaded")
+    (send-response {:jsonrpc "2.0"
+                    :method "notifications/model/populated"
+                    :params {:primitives true :rust count}})))
 
 # Watcher fiber — restarts on crash, capped at 5 attempts.
 (eprintln "  watch: enabled")
