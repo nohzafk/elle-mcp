@@ -38,3 +38,60 @@ jobs:
           cp target/release/libelle_syn.so /tmp/elle/target/release/
       - name: Run MCP server tests
         run: elle test-mcp.lisp elle
+
+  test-aarch64:
+    name: MCP Server Tests (AArch64)
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: aarch64
+      - name: Install GNU parallel and libclang
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y parallel libclang-dev llvm-dev clang
+          echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> "$GITHUB_ENV"
+      - name: Build elle
+        run: |
+          git clone --depth 1 https://github.com/elle-lisp/elle /tmp/elle
+          cd /tmp/elle && cargo build --release -p elle
+          echo "/tmp/elle/target/release" >> "$GITHUB_PATH"
+      - name: Build required plugins
+        run: |
+          git clone --depth 1 https://github.com/elle-lisp/plugins /tmp/plugins
+          ln -s /tmp/elle/elle-plugin /tmp/elle-plugin
+          cd /tmp/plugins
+          cargo build --release -p elle-oxigraph -p elle-syn
+          cp target/release/libelle_oxigraph.so /tmp/elle/target/release/
+          cp target/release/libelle_syn.so /tmp/elle/target/release/
+      - name: Run MCP server tests
+        run: elle test-mcp.lisp elle
+
+  test-macos:
+    name: MCP Server Tests (macOS)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: macos
+      - name: Install GNU parallel
+        run: brew install parallel
+      - name: Build elle
+        run: |
+          git clone --depth 1 https://github.com/elle-lisp/elle /tmp/elle
+          cd /tmp/elle && cargo build --release -p elle
+          echo "/tmp/elle/target/release" >> "$GITHUB_PATH"
+      - name: Build required plugins
+        run: |
+          git clone --depth 1 https://github.com/elle-lisp/plugins /tmp/plugins
+          ln -s /tmp/elle/elle-plugin /tmp/elle-plugin
+          cd /tmp/plugins
+          cargo build --release -p elle-oxigraph -p elle-syn
+          cp target/release/libelle_oxigraph.dylib /tmp/elle/target/release/
+          cp target/release/libelle_syn.dylib /tmp/elle/target/release/
+      - name: Run MCP server tests
+        run: elle test-mcp.lisp elle
