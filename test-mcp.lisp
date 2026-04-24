@@ -110,8 +110,12 @@
 
 (rm-rf test-store)
 
+# Resolve server script: same directory (mcp repo CI) or mcp/ prefix (elle repo).
+(def server-script
+  (if (path/exists? "mcp-server.lisp") "mcp-server.lisp" "mcp/mcp-server.lisp"))
+
 (def proc
-  (subprocess/exec elle-bin ["mcp/mcp-server.lisp" "--" test-store]))
+  (subprocess/exec elle-bin [server-script "--" test-store]))
 (def pin  (get proc :stdin))
 (def pout (get proc :stdout))
 
