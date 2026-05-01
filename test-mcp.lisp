@@ -264,20 +264,20 @@
   ## After sending a ping, the response should arrive within 5 seconds.
   ## This verifies flush is working (without flush, pipe-buffered stdout
   ## may not deliver the response until the buffer fills).
-  (let [[ok? r] (protect (ev/timeout 5 (fn []
+  (let [r (ev/timeout 5 (fn []
       (send pin {:jsonrpc "2.0" :id 15 :method "ping" :params {}})
-      (recv-response pout 15))))]
-    (test "flush: ping response arrives promptly" ok?
+      (recv-response pout 15)))]
+    (test "flush: ping response arrives promptly" (not (nil? r))
       "response was not delivered within 5 seconds"))
 
   ## ── 16. async dispatch: concurrent requests ──────────────────────────
   ## Send two pings back-to-back; both should get responses.
   (send pin {:jsonrpc "2.0" :id 16 :method "ping" :params {}})
   (send pin {:jsonrpc "2.0" :id 17 :method "ping" :params {}})
-  (let [[ok? _] (protect (ev/timeout 10 (fn []
+  (let [r (ev/timeout 10 (fn []
       (recv-response pout 16)
-      (recv-response pout 17))))]
-    (test "async: concurrent pings both respond" ok?
+      (recv-response pout 17)))]
+    (test "async: concurrent pings both respond" (not (nil? r))
       "did not receive both responses within 10 seconds"))
 
   (println "")

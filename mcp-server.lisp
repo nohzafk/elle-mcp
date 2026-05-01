@@ -279,7 +279,7 @@
 (defn ->list [coll]
   "Convert any collection to a list for string/join."
   (def @result ())
-  (each x in coll (assign result (cons x result)))
+  (each x in coll (assign result (pair x result)))
   result)
 
 # ── Tool definitions ─────────────────────────────────────────────────────
@@ -421,12 +421,13 @@
     (when (nil? query)
       (error {:error :invalid-params :message "missing required parameter: query"}))
     (let [[ok? result] (protect (ev/timeout 30 (fn [] (ox:query store query))))]
-      (if ok?
-        (text-content (cond
-          ((boolean? result) (if result "true" "false"))
-          ((array? result)   (if (empty? result) "No results." (json/pretty result)))
-          (true              (string result))))
-        (error-content (string/format "SPARQL error: {}" (err-msg result)))))))
+      (cond
+        ((not ok?)     (error-content (string/format "SPARQL error: {}" (err-msg result))))
+        ((nil? result) (error-content "SPARQL query timed out after 30 seconds"))
+        (true          (text-content (cond
+                         ((boolean? result) (if result "true" "false"))
+                         ((array? result)   (if (empty? result) "No results." (json/pretty result)))
+                         (true              (string result)))))))))
 
 (defn call-sparql-update [arguments]
   (let [update-str (get arguments "update")]
@@ -828,9 +829,12 @@
                         (parameterize ((*stdout* out-port) (*stderr* err-port))
                           (apply callable input-list)))
                start (clock/monotonic)
-               [ok? result] (if (and timeout-ms (> timeout-ms 0))
-                               (protect (ev/timeout (/ timeout-ms 1000) thunk))
-                               (protect (thunk)))
+               [ok? result] (let [[p-ok? p-val] (if (and timeout-ms (> timeout-ms 0))
+                                                    (protect (ev/timeout (/ timeout-ms 1000) thunk))
+                                                    (protect (thunk)))]
+                               (if (and p-ok? (nil? p-val) timeout-ms (> timeout-ms 0))
+                                 [false {:error :timeout :message "operation timed out"}]
+                                 [p-ok? p-val]))
                duration-ns (int (* (- (clock/monotonic) start) 1000000000))]
 
           # Flush and close captured I/O ports
