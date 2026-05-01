@@ -1215,26 +1215,18 @@
 (eprintln "elle-mcp server starting (v0.6.0)")
 (eprintln "  store: " store-path)
 
-# Populate primitives synchronously (fast); Rust population is
-# deferred to the fiber below, driven by tick-populator in the main loop.
+# Populate primitives synchronously (fast).
 (populate-primitives)
 (eprintln "  primitives: loaded")
 
-(def populator (fiber/new (fn []
-  (populate-rust))
-  |:yield|))
-
-(defn tick-populator []
-  "Drain the population fiber to completion, then send the notification."
-  (when (contains? |:new :paused| (fiber/status populator))
-    (def @last nil)
-    (while (contains? |:new :paused| (fiber/status populator))
-      (assign last (fiber/resume populator nil)))
-    (def count (or last 0))
+# Rust population runs as a concurrent fiber — yields between files so
+# the stdin loop remains responsive throughout.
+(ev/spawn (fn []
+  (let [count (populate-rust)]
     (eprintln "  rust: " count " files loaded")
     (send-response {:jsonrpc "2.0"
                     :method "notifications/model/populated"
-                    :params {:primitives true :rust count}})))
+                    :params {:primitives true :rust count}}))))
 
 # Watcher fiber — restarts on crash, capped at 5 attempts.
 (eprintln "  watch: enabled")
@@ -1275,7 +1267,6 @@
     (when (nil? line)
       (eprintln "stdin closed, shutting down")
       (break))
-    (tick-populator)
     (if (> (length line) 10000000)
       (send-response (jsonrpc-error nil -32600 "request too large"))
       (unless (empty? line)
