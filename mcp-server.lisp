@@ -119,7 +119,7 @@
                       (ox:load store (rust-rdf:file file) :ntriples)
                       (ox:load store (rust-rdf:primitive-links file) :ntriples))]
           (assign count (inc count)))
-        (yield nil))
+        (ev/sleep 0))
       (flush-store)
       count)))
 
