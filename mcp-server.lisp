@@ -53,11 +53,28 @@
 
 (def cli-args (drop 1 (sys/args)))
 
+(defn remove-listen-flags [args]
+  "Drop '--', '--listen', and --listen's value from an arg list, so
+   store-path parsing sees only real store paths."
+  (let [n (length args)]
+    (def @out @[])
+    (def @i 0)
+    (while (< i n)
+      (let [a (get args i)
+            prev (if (> i 0) (get args (- i 1)) nil)]
+        (when (and (not (= a "--"))
+                   (not (= a "--listen"))
+                   (not (= prev "--listen")))
+          (push out a)))
+      (assign i (+ i 1)))
+    out))
+
 (def store-path
-  (cond
-    ((not (empty? cli-args))       (first cli-args))
-    ((sys/env "ELLE_MCP_STORE")    (sys/env "ELLE_MCP_STORE"))
-    (true                          ".elle-mcp/store")))
+  (let [rest (remove-listen-flags (sys/args))]
+    (cond
+      ((not (empty? rest))        (first rest))
+      ((sys/env "ELLE_MCP_STORE") (sys/env "ELLE_MCP_STORE"))
+      (true                       ".elle-mcp/store"))))
 
 (defn nuke-store [path]
   "Delete a corrupt store directory so it can be recreated fresh.
@@ -1212,6 +1229,57 @@
 
 # ── Main loop ────────────────────────────────────────────────────────────
 
+## Transport: stdio by default. With `--listen unix:///path` (or
+## `tcp://addr:port`) the server accepts connections on a socket, so several
+## cordis-pi hosts can share ONE elle process. Each connection runs the same
+## line loop in its own fiber; `parameterize` rebinds *stdin*/*stdout* to the
+## connection's ports (print/println respect that rebinding — stdlib.lisp),
+## and parameter frames are per-fiber, so concurrent connections don't
+## interfere.
+(defn parse-tcp-listen [spec]
+  "Parse tcp://addr:port into a listen map."
+  (let [rest (string/replace spec "tcp://" "")
+        bits (string/split rest ":")]
+    {:kind :tcp :addr (get bits 0) :port (parse-int (get bits 1))}))
+
+(defn find-listen []
+  "Parse --listen <spec> from argv. nil = stdio."
+  (let [args (sys/args)]
+    (def @out nil)
+    (def @i 0)
+    (while (< i (length args))
+      (when (and (= (get args i) "--listen") (nil? out))
+        (assign out (get args (+ i 1))))
+      (assign i (+ i 1)))
+    (when (not (nil? out))
+      (cond
+        ((string/starts-with? out "unix://")
+         {:kind :unix :path (string/replace out "unix://" "")})
+        ((string/starts-with? out "tcp://")
+         (parse-tcp-listen out))
+        (true
+         (error {:error :bad-listen :message out}))))))
+
+(defn serve-connection [in-port out-port]
+  "JSON-RPC line loop over one connection (stdio or a socket stream)."
+  (parameterize ((*stdin* in-port) (*stdout* out-port))
+    (forever
+      (let [line (port/read-line (*stdin*))]
+        (when (nil? line)
+          (eprintln "connection closed")
+          (break))
+        (if (> (length line) 10000000)
+          (send-response (jsonrpc-error nil -32600 "request too large"))
+          (unless (empty? line)
+            (let [[ok? msg] (protect (json/parse line))]
+              (if (not ok?)
+                (begin
+                  (eprintln "JSON parse error: " (err-msg msg))
+                  (send-response (jsonrpc-error nil -32700 "parse error")))
+                (let [response (handle-request msg)]
+                  (unless (nil? response)
+                    (send-response response)))))))))))
+
 (eprintln "elle-mcp server starting (v0.6.0)")
 (eprintln "  store: " store-path)
 
@@ -1262,21 +1330,22 @@
         (assign restarts (inc restarts))
         (ev/sleep 1))))))
 
-(forever
-  (let [line (port/read-line (*stdin*))]
-    (when (nil? line)
-      (eprintln "stdin closed, shutting down")
-      (break))
-    (if (> (length line) 10000000)
-      (send-response (jsonrpc-error nil -32600 "request too large"))
-      (unless (empty? line)
-        (let [[ok? msg] (protect (json/parse line))]
-          (if (not ok?)
-            (begin
-              (eprintln "JSON parse error: " (err-msg msg))
-              (send-response (jsonrpc-error nil -32700 "parse error")))
-            (let [response (handle-request msg)]
-              (unless (nil? response)
-                (send-response response)))))))))
+## Dispatch: stdio mode runs the loop on the process ports; listen mode
+## accepts connections and serves each in its own fiber.
+(def listen (find-listen))
+
+(if (nil? listen)
+  (serve-connection (*stdin*) (*stdout*))
+  (let [listener (if (= (get listen :kind) :unix)
+                   (unix/listen (get listen :path))
+                   (tcp/listen (get listen :addr) (get listen :port)))]
+    (eprintln "  listening: " (if (= (get listen :kind) :unix)
+                                (get listen :path)
+                                (string (get listen :addr) ":" (get listen :port))))
+    (forever
+      (let [conn (if (= (get listen :kind) :unix)
+                   (unix/accept listener)
+                   (tcp/accept listener))]
+        (ev/spawn (fn [] (serve-connection conn conn)))))))
 
 ) # end parameterize

@@ -281,4 +281,75 @@
       "did not receive both responses within 10 seconds"))
 
   (println "")
+  (println "stdio tests passed."))
+
+## ── Listen mode: one server, several clients over a unix socket ─────────
+## `--listen unix://PATH` serves the same JSON-RPC line protocol to every
+## connection instead of stdio. Two clients connect to one process and each
+## gets its own answers; a closed client does not take the server down.
+
+(def listen-store "./target/elle-mcp-test-store-listen")
+(def listen-sock  "./target/elle-mcp-test.sock")
+
+(defn wait-for-path [path secs]
+  "Poll until PATH exists, at most SECS seconds. Returns true if it appeared."
+  (def @left (* secs 10))
+  (while (and (> left 0) (not (path/exists? path)))
+    (ev/sleep 0.1)
+    (assign left (- left 1)))
+  (path/exists? path))
+
+(println "")
+(println "── listen mode ──")
+(rm-rf listen-store)
+(rm-rf listen-sock)
+
+(def lproc
+  (subprocess/exec elle-bin [server-script "--listen" (string "unix://" listen-sock)
+                             "--" listen-store]))
+
+(defer (begin (subprocess/kill lproc) (rm-rf listen-store) (rm-rf listen-sock))
+
+  (test "listen: socket appears within 10 seconds" (wait-for-path listen-sock 10)
+    "server did not bind the unix socket")
+
+  (let [c1 (unix/connect listen-sock)
+        c2 (unix/connect listen-sock)]
+
+    ## initialize on the first connection only; the second is a plain ping.
+    (let [r (ev/timeout 10 (fn []
+        (send c1 {:jsonrpc "2.0" :id 1 :method "initialize"
+                  :params {:protocolVersion "2025-03-26" :capabilities {}
+                           :clientInfo {:name "test-mcp-listen" :version "0.1"}}})
+        (recv-response c1 1)))]
+      (test "listen: initialize answered on connection 1" (not (nil? r))
+        "no response on connection 1"))
+
+    (let [r (ev/timeout 10 (fn []
+        (send c2 {:jsonrpc "2.0" :id 2 :method "ping" :params {}})
+        (recv-response c2 2)))]
+      (test "listen: ping answered on connection 2" (not (nil? r))
+        "no response on connection 2"))
+
+    ## Interleave: send on both, read both. Each answer must arrive on the
+    ## connection that asked, with its own id.
+    (send c1 {:jsonrpc "2.0" :id 3 :method "ping" :params {}})
+    (send c2 {:jsonrpc "2.0" :id 4 :method "ping" :params {}})
+    (let [r (ev/timeout 10 (fn []
+        (let [a (recv-response c1 3)
+              b (recv-response c2 4)]
+          (and (= (get a "id") 3) (= (get b "id") 4)))))]
+      (test "listen: interleaved pings answered on their own connections" (= r true)
+        "answers crossed connections or did not arrive"))
+
+    ## Closing one client leaves the other served.
+    (port/close c1)
+    (let [r (ev/timeout 10 (fn []
+        (send c2 {:jsonrpc "2.0" :id 5 :method "ping" :params {}})
+        (recv-response c2 5)))]
+      (test "listen: server survives a client closing" (not (nil? r))
+        "connection 2 got no answer after connection 1 closed"))
+    (port/close c2))
+
+  (println "")
   (println "all MCP tests passed."))
